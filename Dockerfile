@@ -8,6 +8,7 @@ RUN dnf update -y; dnf install -y \
 	cpprest-devel \
 	java \
 	make \
+        openssl-devel \
 	python
 
 
