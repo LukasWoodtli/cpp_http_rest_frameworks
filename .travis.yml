@@ -1,0 +1,8 @@
+sudo: required
+
+services:
+  - docker
+
+script:
+# running docker and lauching build script in the container
+- ./run_docker.sh ./build_and_test.sh
