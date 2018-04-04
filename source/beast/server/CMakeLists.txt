@@ -1,4 +1,4 @@
-set(TARGET_NAME beast_client)
+set(TARGET_NAME beast_server)
 
 add_executable(${TARGET_NAME} main.cpp)
 
