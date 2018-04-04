@@ -1,4 +1,4 @@
-set(TARGET_NAME cpprest_client)
+set(TARGET_NAME cpprest_server)
 
 add_executable(${TARGET_NAME} main.cpp)
 
