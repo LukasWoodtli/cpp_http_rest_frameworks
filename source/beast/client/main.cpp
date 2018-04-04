@@ -12,8 +12,8 @@ namespace http = boost::beast::http;
 
 int main() {
 	const std::string host = "localhost";
-	const std::string port = "9876";
-	const std::string uri = "/api/";
+	const std::string port = "7890";
+	const std::string uri = "/";
 
 	boost::asio::io_context io_context;
 
