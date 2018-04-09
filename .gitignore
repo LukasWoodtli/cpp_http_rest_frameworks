@@ -1,4 +1,4 @@
-source/build/
+build/
 *.kdev4
 python_client/
 python_server/
