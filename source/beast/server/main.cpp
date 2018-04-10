@@ -12,105 +12,80 @@
 using tcp = boost::asio::ip::tcp;
 namespace http = boost::beast::http;
 
+
+using request = http::request<http::string_body>;
+using response = http::response<http::string_body>;
+
 void fail(boost::system::error_code error_code)
 {
     throw std::logic_error ( error_code.message() );
 }
 
-template <class Send>
-void handle_request ( http::request<http::string_body>&& req,
-                      Send&& send )
+// return a response for a bad request
+response bad_request(const request& req, const std::string& why ) {
+        response res {http::status::bad_request, req.version() };
+        res.set ( http::field::server, "myServer" );
+        res.set ( http::field::content_type, "text/html" );
+        res.keep_alive ( req.keep_alive() );
+        res.body() = why;
+        res.prepare_payload();
+        return res;
+}
+
+void handle_request ( const request req,
+                      std::function<void(response)> send )
 {
-    // return a response for a bad request
-    auto const bad_request = [&req] ( boost::beast::string_view why ) {
-        http::response<http::string_body> res {http::status::bad_request, req.version() };
-        res.set ( http::field::server, "myServer" );
-        res.set ( http::field::content_type, "text/html" );
-        res.keep_alive ( req.keep_alive() );
-        res.body() = why.to_string();
-        res.prepare_payload();
-        return res;
-    };
-
-    // return a 'not found' response
-    auto const not_found = [&req] ( boost::beast::string_view target ) {
-        http::response<http::string_body> res {http::status::not_found, req.version() };
-        res.set ( http::field::server, "myServer" );
-        res.set ( http::field::content_type, "text/html" );
-        res.keep_alive ( req.keep_alive() );
-        res.body() = "The resource '" + target.to_string() + "' was not found.";
-        res.prepare_payload();
-        return res;
-    };
-
-    // return server error
-    auto const server_error = [&req] ( boost::beast::string_view what ) {
-        http::response<http::string_body> res {http::status::internal_server_error, req.version() };
-        res.set ( http::field::server, "myServer" );
-        res.set ( http::field::content_type, "text/html" );
-        res.keep_alive ( req.keep_alive() );
-        res.body() = "An error occured '" + what.to_string() + "'";
-        res.prepare_payload();
-        return res;
-    };
-
     // Make sure we can handle the method
     if ( req.method() != http::verb::get ) {
-        return send ( bad_request ( "Unknown HTTP-method" ) );
+			  auto res = bad_request(req, "Unknown HTTP-method!\n");
+        send(res);
+				return;
     }
 
     // respond to GET
-    http::response<http::string_body> res {http::status::ok, req.version() };
+    response res {http::status::ok, req.version() };
     res.set ( http::field::server, "myServer" );
     res.set ( http::field::content_type, "text/html" );
-    res.body() = "Hello from beast!";
+    std::string msg("Hello from beast!\nTarget: ");
+    msg += req.target().to_string();
+		msg += "\n";
+		res.body() = msg;
     res.keep_alive ( req.keep_alive() );
     res.prepare_payload();
-    return send ( std::move ( res ) );
+    send(res);
 }
 
 class session : public std::enable_shared_from_this<session>
 {
-    // C++11 style generic lambda
-    struct send_lambda {
-        session& m_self;
-
-        explicit send_lambda ( session& self ) : m_self ( self ) {}
-
-        template<bool isRequest, class Body, class Fields>
-        void operator() ( http::message<isRequest, Body, Fields>&& msg ) const
-        {
-            auto sp = std::make_shared<http::message<isRequest, Body, Fields>> ( std::move ( msg ) );
-
-            // sotre shared pointer (type erased) to keep it alive
-            m_self.m_res = sp;
-
-            // write response
-            http::async_write ( m_self.m_socket,
-                                *sp,
-                                boost::asio::bind_executor ( m_self.m_strand,
-                                        std::bind ( &session::on_write,
-                                                    m_self.shared_from_this(),
-                                                    std::placeholders::_1,
-                                                    std::placeholders::_2,
-                                                    sp->need_eof() ) ) );
-        }
-    };
-
     tcp::socket m_socket;
     boost::asio::strand<boost::asio::io_context::executor_type> m_strand;
     boost::beast::flat_buffer m_buffer;
-    http::request<http::string_body> m_req;
-    std::shared_ptr<void> m_res;
-    send_lambda m_lambda;
+    request m_req;
+    std::shared_ptr<response> m_res;
+    std::function<void(response)> m_lambda;
 
 public:
     // take ownership fo socket
     explicit session ( tcp::socket socket )
         : m_socket ( std::move ( socket ) ),
-          m_strand ( m_socket.get_executor() ),
-          m_lambda ( *this )
+          m_strand ( m_socket.get_executor() )
     {
+			m_lambda = [this]( response msg )
+        {
+            auto sp = std::make_shared<response>(msg);
+
+            this->m_res = sp;
+
+            // write response
+            http::async_write ( this->m_socket,
+                                *sp,
+                                boost::asio::bind_executor ( this->m_strand,
+                                        std::bind ( &session::on_write,
+                                                    this->shared_from_this(),
+                                                    std::placeholders::_1,
+                                                    std::placeholders::_2,
+                                                    sp->need_eof() ) ) );
+        };
     }
 
     // start async operation
@@ -146,7 +121,7 @@ public:
         }
 
         // send response
-        handle_request ( std::move ( m_req ), m_lambda );
+        handle_request (m_req, m_lambda);
     }
 
     void on_write ( boost::system::error_code ec,
