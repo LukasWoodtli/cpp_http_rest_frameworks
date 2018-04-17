@@ -21,6 +21,7 @@
 - Understanding of boost::asio needed
 - will probably be more adopted by the industry (boost)
 - works with completion handlers (callbacks) of boost::asio
+- No direct support for REST
 
 
 ## Comparison
@@ -34,6 +35,7 @@
 
 - Lot of boilerplate code (but needs to be written only once for an application)
 - Beast is probably getting to be more adapted by the industry (it's in boost now)
+
 
 ### cpprest
 
